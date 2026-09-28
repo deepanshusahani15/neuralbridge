@@ -1,0 +1,56 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Packaging / build
+*.egg-info/
+build/
+dist/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Model weights and large artifacts
+models/*
+!models/.gitkeep
+*.pt
+*.pth
+*.onnx
+*.h5
+*.ckpt
+*.safetensors
+*.bin
+
+# Data (keep the folder, ignore contents)
+data/*
+!data/.gitkeep
+*.csv
+*.parquet
+*.sqlite
+*.db
+
+# Logs and temp
+*.log
+logs/
+tmp/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code local settings (personal, not shared)
+.claude/settings.local.json
