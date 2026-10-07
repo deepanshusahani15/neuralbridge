@@ -30,7 +30,7 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python scripts/download_hand_model.py
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 ### Windows (PowerShell)
@@ -41,7 +41,7 @@ py -3.12 -m venv .venv
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python scripts\download_hand_model.py
-streamlit run app.py
+python -m  streamlit run app.py
 ```
 
 If activation is blocked by an execution policy error, run this once, then activate again:
@@ -58,7 +58,7 @@ py -3.12 -m venv .venv
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python scripts\download_hand_model.py
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 ### Windows (Git Bash)
@@ -69,7 +69,7 @@ source .venv/Scripts/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python scripts/download_hand_model.py
-streamlit run app.py
+python -m  streamlit run app.py
 ```
 
 Use `py -3.11` instead of `py -3.12` if that is the version you have installed.
