@@ -1,11 +1,9 @@
 """Neuralbridge three-mode communication MVP."""
-from collections import deque
-from pathlib import Path
-import threading
 
 import numpy as np
 import streamlit as st
 
+from backend.live_camera import LiveEngine
 from backend.phrase_mapper import load_phrases
 from backend.sign_recognition import CLASSIFIER, LANDMARK_MODEL, HandExtractor, load_classifier, predict
 from backend.speech_to_text import transcribe
@@ -49,72 +47,70 @@ def show_recognition(result):
         st.info("Could not confidently recognize the gesture. Try again with one hand and good lighting.")
 
 
-class LiveEngine:
-    """The video callback owns the landmarker; the UI reads a small thread-safe result."""
+def live_camera(model, phrases):
+    st.caption("Press START and allow camera access. Press STOP to release the camera.")
+    if model is None:
+        st.info("Camera preview is available. Gesture recognition requires the hand model and a trained classifier; see README.md.")
+    try:
+        from streamlit_webrtc import WebRtcMode, webrtc_streamer
+    except ImportError:
+        st.error("Live camera dependencies are missing. Run: python -m pip install -r requirements.txt")
+        return
 
-    def __init__(self, model, phrases):
-        self.model = model
-        self.phrases = phrases
-        self.lock = threading.Lock()
-        self.extractor = None
-        self.votes = deque(maxlen=5)
-        self.latest = None
-        self.message = "Waiting for one hand in the camera frame."
+    context = webrtc_streamer(
+        key="gesture-live",
+        mode=WebRtcMode.SENDRECV,
+        video_processor_factory=lambda: LiveEngine(model, phrases),
+        media_stream_constraints={
+            "video": {"width": {"ideal": 640}, "height": {"ideal": 480},
+                      "frameRate": {"ideal": 15, "max": 20}},
+            "audio": False,
+        },
+        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+        async_processing=True,
+    )
 
-    def process(self, frame):
-        import av
-        import cv2
+    @st.fragment(run_every="0.5s")
+    def live_result():
+        if not context.state.playing:
+            st.info("Camera stopped. Press START to begin.")
+            return
+        engine = context.video_processor
+        if engine is None or model is None:
+            st.info("Camera preview only." if model is None else "Connecting camera…")
+            return
+        result, message = engine.snapshot()
+        if result:
+            st.success(result.phrase)
+            st.caption(f"Predicted {result.label} · model score {result.confidence:.0%}")
+            play_text(result.phrase, "speak_live")
+        else:
+            st.info(message)
 
-        bgr = frame.to_ndarray(format="bgr24")
-        try:
-            if self.extractor is None:
-                self.extractor = HandExtractor()
-            features, state, points = self.extractor.extract(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
-            if features is None:
-                self.votes.clear()
-                with self.lock:
-                    self.latest = None
-                    self.message = "Move one hand into view." if state == "no_hand" else "Show only one hand."
-            else:
-                result = predict(features, self.model, self.phrases)
-                self.votes.append(result.label if result.status == "high" else None)
-                stable = len(self.votes) >= 4 and list(self.votes)[-4:] == [result.label] * 4
-                with self.lock:
-                    self.latest = result if stable and result.status == "high" else None
-                    self.message = "Gesture held steady." if self.latest else "Hold a supported gesture steady for a moment."
-                height, width = bgr.shape[:2]
-                for x, y in points:
-                    cv2.circle(bgr, (int(x * width), int(y * height)), 3, (62, 220, 112), -1)
-        except Exception as exc:
-            with self.lock:
-                self.latest = None
-                self.message = f"Camera processing unavailable: {exc}"
-        return av.VideoFrame.from_ndarray(bgr, format="bgr24")
-
-    def snapshot(self):
-        with self.lock:
-            return self.latest, self.message
+    live_result()
+    st.caption("If video does not connect, allow camera access in your browser and close other apps using it. Remote access requires HTTPS; some networks also require a TURN server.")
 
 
 def sign_mode(phrases):
     st.header("Sign or gesture → text and speech")
     st.write("This model recognizes only team-collected, verified labels. It does not translate unrestricted sign language.")
-    capture, live, fallback = st.tabs(["Take a picture", "Live camera", "Demo backup"])
+    live, capture, fallback = st.tabs(["Live camera", "Take a picture", "Demo backup"])
     with fallback:
         st.info("Manual demo backup. This selection is not an AI prediction.")
         label = st.selectbox("Choose a prepared phrase", list(phrases))
         st.write(phrases[label])
         play_text(phrases[label], "speak_fallback")
-    if not LANDMARK_MODEL.is_file() or not CLASSIFIER.is_file():
+    model = None
+    if LANDMARK_MODEL.is_file() and CLASSIFIER.is_file():
+        try:
+            model = classifier()
+        except Exception as exc:
+            st.warning(f"Could not load gesture classifier: {exc}")
+    with live:
+        live_camera(model, phrases)
+    if model is None:
         with capture:
-            st.warning("Gesture recognition needs the hand model and your trained gesture classifier. Follow the setup steps in README.md.")
-        with live:
-            st.warning("Train the gesture classifier before starting live recognition.")
-        return
-    try:
-        model = classifier()
-    except Exception as exc:
-        st.error(f"Could not load gesture classifier: {exc}")
+            st.warning("Picture recognition needs the hand model and your trained gesture classifier. Follow README.md.")
         return
     with capture:
         photo = st.camera_input("Show one supported gesture and take a picture")
@@ -136,31 +132,6 @@ def sign_mode(phrases):
                     extractor.close()
         if result := st.session_state.get("photo_result"):
             show_recognition(result)
-    with live:
-        st.caption("Live video requires browser camera permission and a secure connection outside localhost.")
-        try:
-            from streamlit_webrtc import webrtc_streamer, WebRtcMode
-
-            engine = LiveEngine(model, phrases)
-            webrtc_streamer(key="gesture-live", mode=WebRtcMode.SENDRECV,
-                           video_frame_callback=engine.process,
-                           media_stream_constraints={"video": True, "audio": False},
-                           async_processing=True)
-
-            @st.fragment(run_every="0.5s")
-            def live_result():
-                result, message = engine.snapshot()
-                if result:
-                    st.success(result.phrase)
-                    st.caption(f"Predicted {result.label} · model score {result.confidence:.0%}")
-                    play_text(result.phrase, "speak_live")
-                else:
-                    st.info(message)
-
-            live_result()
-        except ImportError:
-            st.warning("Install the optional live video package from requirements.txt. Picture mode remains available.")
-
 
 def audio_input(label, key):
     clip = st.audio_input(label, key=key)

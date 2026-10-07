@@ -7,12 +7,22 @@ Neuralbridge is a hackathon MVP for short two-way exchanges across communication
 - Streamlit UI with picture capture, a live camera option, speech-to-text, voice-first response, and a clearly labeled manual demo backup.
 - MediaPipe Hand Landmarker features plus a separately trained Random Forest classifier. No fabricated model or sample dataset is bundled.
 - Local faster-whisper speech transcription. Model weights download on first use; later inference can run offline.
-- Local TTS through macOS `say` and `afconvert` or Linux `espeak-ng`; readable text remains if audio fails.
+- Local TTS through macOS `say` and `afconvert` or Linux `espeak-ng`; readable text remains if audio fails (including on Windows, where no local speech backend is currently supported).
 - One-hand handling, confidence gates, and four consistent high-score frames before live results appear.
 
-## Setup on macOS or Linux
+## Supported platforms
 
-Use Python 3.11 or 3.12 on a laptop with a camera and microphone. From this directory:
+| Platform | App and live camera | Speech-to-text | Speech output (TTS) |
+| --- | --- | --- | --- |
+| macOS | Yes | Yes | `say` + `afconvert` (built in) |
+| Linux | Yes | Yes | `espeak-ng` (install separately) |
+| Windows | Yes | Yes | Not supported; text is shown instead |
+
+## Setup
+
+Use Python 3.11 or 3.12 on a laptop with a camera and microphone. Run all commands from the project root (the `neuralbridge` folder), since `requirements.txt`, `scripts/` and `app.py` are relative paths. Follow the steps for your operating system and shell.
+
+### macOS / Linux (bash or zsh)
 
 ```bash
 python3 -m venv .venv
@@ -23,15 +33,85 @@ python scripts/download_hand_model.py
 streamlit run app.py
 ```
 
-On Linux, install `espeak-ng` through your system package manager for speech output. On macOS, `say` and `afconvert` are normally built in. Run on `localhost` for camera and microphone access; remote use requires HTTPS. The first speech transcription downloads a small model from its model host, so prepare that while connected to the internet before demo day.
+### Windows (PowerShell)
 
-The app can launch without a trained gesture classifier. Its gesture AI modes clearly say that training is required; speech and the manual backup still work.
+```powershell
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python scripts\download_hand_model.py
+streamlit run app.py
+```
+
+If activation is blocked by an execution policy error, run this once, then activate again:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+### Windows (Command Prompt / cmd)
+
+```bat
+py -3.12 -m venv .venv
+.venv\Scripts\activate.bat
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python scripts\download_hand_model.py
+streamlit run app.py
+```
+
+### Windows (Git Bash)
+
+```bash
+py -3.12 -m venv .venv
+source .venv/Scripts/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python scripts/download_hand_model.py
+streamlit run app.py
+```
+
+Use `py -3.11` instead of `py -3.12` if that is the version you have installed.
+
+### Differences at a glance
+
+| | macOS / Linux | Windows |
+| --- | --- | --- |
+| Python launcher | `python3` | `py -3.12` (or `py -3.11`) |
+| Activate script | `source .venv/bin/activate` | `.venv\Scripts\Activate.ps1` (PowerShell), `.venv\Scripts\activate.bat` (cmd), `source .venv/Scripts/activate` (Git Bash) |
+| Path separator | `/` | `\` in PowerShell and cmd, `/` in Git Bash |
+| Leave the environment | `deactivate` | `deactivate` |
+
+After activation your prompt should show `(.venv)`. Confirm with `which python` (macOS/Linux, Git Bash) or `where python` (Windows).
+
+### Platform extras
+
+- **macOS:** `say` and `afconvert` are normally built in, so no extra install is needed for speech output.
+- **Linux:** install `espeak-ng` through your system package manager for speech output, for example `sudo apt install espeak-ng` on Debian/Ubuntu. If creating the virtual environment fails on Debian/Ubuntu, install `python3-venv` first with `sudo apt install python3-venv`.
+- **Windows:** no local speech backend is currently supported, so replies are shown as readable text only. Transcription and the rest of the app work normally.
+
+Run on `localhost` for camera and microphone access; remote use requires HTTPS. The first speech transcription downloads a small model from its model host, so prepare that while connected to the internet before demo day.
+
+The app can launch without a trained gesture classifier. Live camera preview works immediately without a classifier; gesture predictions require training. Speech and the manual backup also work.
+
+## Live camera
+
+Open **Sign / gesture → Live camera**, press **START**, and allow browser camera access. The stream uses video only. Press **STOP** to release it. Recognition displays a phrase after four consecutive high-score frames; use **Speak this text** for audio. Without both model files, the stream provides a clearly labeled preview only.
+
+Use localhost or HTTPS. If access fails, check browser camera permissions and close other applications using the camera. The default WebRTC configuration uses Google's public STUN service for connection discovery. Restricted networks may require a deployment-specific TURN server in `rtc_configuration` in `app.py`.
+
+Platform notes for camera and microphone permissions:
+
+- **macOS:** allow your browser under System Settings → Privacy & Security → Camera and Microphone.
+- **Windows:** allow access under Settings → Privacy & security → Camera and Microphone, including "Let desktop apps access your camera".
+- **Linux:** make sure no other program holds the camera (for example, check with `fuser /dev/video0`) and that your browser has permission in its site settings.
 
 ## Prepare gesture data
 
 1. Agree on visible, static gestures using appropriate Indian Sign Language references and people familiar with the language. The keys in `data/phrase_map.json` are **proposed product labels**, not a claim that a particular handshape is the correct sign. Remove labels that cannot be verified or reliably separated using one static hand. Some concepts need movement or both hands and cannot be captured by this baseline.
 2. Edit `data/phrase_map.json` to the agreed labels and phrases. Keep at least two labels. Capture each label from at least three participants, ideally 80–150 samples per label, with different lighting and distances. Ask volunteers for consent. Do not enter personal names as participant IDs.
-3. On the **local laptop** (the collector uses its camera directly), run a command per label, participant, and session:
+3. On the **local laptop** (the collector uses its camera directly), activate the virtual environment and run a command per label, participant, and session. The commands are identical on macOS, Linux and Windows (PowerShell, cmd and Git Bash):
 
 ```bash
 python scripts/collect.py --label HELLO --participant volunteer_a --count 100
@@ -39,6 +119,8 @@ python scripts/collect.py --label HELP --participant volunteer_a --count 100
 # Repeat every selected class with volunteer_b and volunteer_c.
 python scripts/train.py
 ```
+
+On Windows PowerShell and cmd you may also write `scripts\collect.py` and `scripts\train.py`; forward slashes work too.
 
 The collector saves only a CSV of landmarks and metadata in `data/processed/landmarks.csv`. `q` ends capture early. Avoid holding a completely static pose for every sample: vary orientation and distance, then check labels and remove mistakes. Training rejects datasets that cannot hold out whole participants (or, with fewer people, whole recording sessions) while retaining all classes. Its output is `models/sign_classifier.joblib` and `models/evaluation.json`. These generated files are ignored by Git, so preserve and share the known-good trained model with the team through an approved private route. Only load a model file produced by your team because joblib files use Python pickle.
 
@@ -49,7 +131,7 @@ Read `models/evaluation.json` for held-out accuracy, per-class precision and rec
 1. Start the known-good build before judges join. Choose **Sign / gesture → Take a picture**. Show a supported gesture and press **Recognize picture**. If using **Live camera**, hold a supported gesture for a moment.
 2. Show the phrase and model score. Speak a high-confidence result, or confirm a medium-confidence picture manually.
 3. Switch to **Speech to text**, record the other person's spoken reply, then press **Transcribe recording**. Show the visible transcript.
-4. Switch to **Voice-first**, record a short message, transcribe it, and press **Speak this text** to read the selected reply aloud.
+4. Switch to **Voice-first**, record a short message, transcribe it, and press **Speak this text** to read the selected reply aloud. On Windows, the reply is shown as text because no local speech backend is supported.
 5. If the camera or model fails, use **Demo backup** and explicitly tell judges it is a manual selection, then continue with the speech flow. Never present the backup as recognition.
 
 ## Project layout
@@ -66,7 +148,11 @@ Read `models/evaluation.json` for held-out accuracy, per-class precision and rec
 | `data/phrase_map.json` | Editable vocabulary and spoken phrases |
 | `tests/` | Core behavior checks |
 
-Run the core checks with `python -m unittest discover -s tests -v`.
+Run the core checks with the same command on every platform:
+
+```bash
+python -m unittest discover -s tests -v
+```
 
 ## Privacy and limitations
 
